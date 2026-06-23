@@ -1,0 +1,63 @@
+image: python:3.12-bookworm
+
+stages:
+  - test
+  - report
+  - deploy
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  PYTHONUNBUFFERED: "1"
+  ALLURE_VERSION: "2.30.0"
+
+cache:
+  paths:
+    - .cache/pip
+
+run_tests:
+  stage: test
+  before_script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends chromium chromium-driver xvfb xauth
+    - python -m pip install --upgrade pip
+    - pip install -r requirements.txt
+  script:
+    - xvfb-run -a pytest -v --tb=line --browser=chrome --language=en -m need_review --junitxml=report.xml --alluredir=allure-results --clean-alluredir
+  after_script:
+    - '[ -f report.xml ] || echo "<testsuite></testsuite>" > report.xml'
+    - mkdir -p allure-results
+  artifacts:
+    when: always
+    reports:
+      junit: report.xml
+    paths:
+      - report.xml
+      - allure-results
+    expire_in: 7 days
+
+allure_report:
+  stage: report
+  when: always
+  needs:
+    - job: run_tests
+      artifacts: true
+  before_script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends default-jre curl unzip
+    - curl -sSL "https://repo.maven.apache.org/maven2/io/qameta/allure/allure-commandline/${ALLURE_VERSION}/allure-commandline-${ALLURE_VERSION}.zip" -o allure.zip
+    - unzip -q allure.zip
+  script:
+    - ./allure-${ALLURE_VERSION}/bin/allure generate allure-results -o allure-report --clean
+  artifacts:
+    when: always
+    paths:
+      - allure-report
+    expire_in: 7 days
+
+deploy_app:
+  stage: deploy
+  script:
+    - echo "Deploy step example"
+  only:
+    - main
+  when: manual
